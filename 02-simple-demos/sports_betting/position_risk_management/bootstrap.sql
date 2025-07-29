@@ -1,25 +1,4 @@
-CREATE TABLE positions (
-    position_id INT,
-    league VARCHAR,
-    position_name VARCHAR,
-    timestamp TIMESTAMPTZ,
-    stake_amount FLOAT,
-    expected_return FLOAT,
-    max_risk FLOAT,
-    fair_value FLOAT,
-    current_odds FLOAT,
-    profit_loss FLOAT,
-    exposure FLOAT
-);
-
-CREATE TABLE market_data (
-    position_id INT,
-    bookmaker VARCHAR,
-    market_price FLOAT,
-    volume INT,
-    timestamp TIMESTAMPTZ
-);
-
+-- In RisingWave
 CREATE MATERIALIZED VIEW position_overview AS
 SELECT
     p.position_id,
@@ -37,11 +16,11 @@ SELECT
     END AS risk_level,
     m.timestamp AS last_update
 FROM
-    positions AS p
+    positions_src AS p
 JOIN
     (SELECT position_id, market_price, timestamp,
             ROW_NUMBER() OVER (PARTITION BY position_id ORDER BY timestamp DESC) AS row_num
-     FROM market_data) AS m
+     FROM market_data_src) AS m
 ON p.position_id = m.position_id
 WHERE m.row_num = 1;
 
@@ -63,11 +42,10 @@ SELECT
     m.market_price,
     m.timestamp AS last_update
 FROM
-    positions AS p
+    positions_src AS p
 JOIN
     (SELECT position_id, bookmaker, market_price, timestamp,
             ROW_NUMBER() OVER (PARTITION BY position_id, bookmaker ORDER BY timestamp DESC) AS row_num
-     FROM market_data) AS m
+     FROM market_data_src) AS m
 ON p.position_id = m.position_id
 WHERE m.row_num = 1;
-

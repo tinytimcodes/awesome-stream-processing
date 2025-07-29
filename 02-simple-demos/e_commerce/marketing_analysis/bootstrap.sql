@@ -106,9 +106,9 @@ SELECT
     NULLIF(COUNT(DISTINCT CASE WHEN event_type = 'click' THEN event_id END), 0) AS conversion_rate
 FROM TUMBLE(marketing_events, timestamp, INTERVAL '5 MINUTES')
 JOIN campaigns c ON marketing_events.campaign_id = c.campaign_id
-JOIN ab_test_variants av ON marketing_events.variant_id = av.variant_id -- join on variant_id not campaign_id
+JOIN ab_test_variants av ON marketing_events.variant_id = av.variant_id
 WHERE c.campaign_type = 'ab_test' 
-  AND marketing_events.variant_id IS NOT NULL  -- NEW: Only include events with variant assignment
+  AND marketing_events.variant_id IS NOT NULL
 GROUP BY
   window_start,
   window_end,
