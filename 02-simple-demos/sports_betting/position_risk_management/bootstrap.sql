@@ -10,9 +10,8 @@ WITH (
     slot.name = 'positions_slot'
 )
 FORMAT PLAIN ENCODE JSON
-TABLE 'public.positions';
+TABLE "public"."positions";
 
--- CDC source for market_data
 CREATE SOURCE market_data_src
 WITH (
     connector = 'postgres-cdc',
@@ -25,7 +24,7 @@ WITH (
     slot.name = 'marketdata_slot'
 )
 FORMAT PLAIN ENCODE JSON
-TABLE 'public.market_data';
+TABLE "public"."market_data";
 
 CREATE MATERIALIZED VIEW position_overview AS
 SELECT
