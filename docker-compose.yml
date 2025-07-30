@@ -34,6 +34,14 @@ services:
       POSTGRES_DB: pgdb
     ports:
       - "5432:5432"
+    command:
+    - "postgres"
+    - "-c"
+    - "wal_level=logical"
+    - "-c"
+    - "max_replication_slots=10"
+    - "-c"
+    - "max_wal_senders=10"
 
   risingwave:
     image: ghcr.io/risingwavelabs/risingwave:latest
@@ -68,4 +76,3 @@ services:
         superset fab create-admin --username admin --firstname admin --lastname user --email admin@example.com --password admin || true &&
         superset init &&
         superset run -h 0.0.0.0 -p 8088"
-
