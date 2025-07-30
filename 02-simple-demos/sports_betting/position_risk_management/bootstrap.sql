@@ -7,10 +7,11 @@ WITH (
     password = 'password',
     database = 'pgdb',
     publication = 'betting_pub',
-    slot.name = 'positions_slot'
+    slot.name = 'positions_slot',
+    schema.name = 'public',
+    table.name = 'positions'
 )
-FORMAT PLAIN ENCODE JSON
-TABLE "public"."positions";
+FORMAT PLAIN ENCODE JSON;
 
 CREATE SOURCE market_data_src
 WITH (
@@ -21,10 +22,11 @@ WITH (
     password = 'password',
     database = 'pgdb',
     publication = 'betting_pub',
-    slot.name = 'marketdata_slot'
+    slot.name = 'marketdata_slot',
+    schema.name = 'public',
+    table.name = 'market_data'
 )
-FORMAT PLAIN ENCODE JSON
-TABLE "public"."market_data";
+FORMAT PLAIN ENCODE JSON;
 
 CREATE MATERIALIZED VIEW position_overview AS
 SELECT
