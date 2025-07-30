@@ -1,4 +1,32 @@
--- In RisingWave
+CREATE SOURCE positions_src
+WITH (
+    connector = 'postgres-cdc',
+    hostname = 'postgres',
+    port = 5432,
+    username = 'rw_replication',
+    password = 'password',
+    database = 'pgdb',
+    publication = 'betting_pub',
+    slot.name = 'positions_slot'
+)
+FORMAT PLAIN ENCODE JSON
+TABLE 'public.positions';
+
+-- CDC source for market_data
+CREATE SOURCE market_data_src
+WITH (
+    connector = 'postgres-cdc',
+    hostname = 'postgres',
+    port = 5432,
+    username = 'rw_replication',
+    password = 'password',
+    database = 'pgdb',
+    publication = 'betting_pub',
+    slot.name = 'marketdata_slot'
+)
+FORMAT PLAIN ENCODE JSON
+TABLE 'public.market_data';
+
 CREATE MATERIALIZED VIEW position_overview AS
 SELECT
     p.position_id,
