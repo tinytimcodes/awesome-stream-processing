@@ -90,7 +90,6 @@ try:
             ))
 
         conn.commit()
-        print("Inserted betting positions data.")
 
         for i in range(num_positions):
             position_id = i + 1
@@ -108,7 +107,6 @@ try:
             ))
 
         conn.commit()
-        print("Inserted market data.")
 
         time.sleep(2)
 
