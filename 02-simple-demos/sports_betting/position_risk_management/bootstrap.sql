@@ -70,4 +70,3 @@ JOIN
      FROM market_data) AS m
 ON p.position_id = m.position_id
 WHERE m.row_num = 1;
-
