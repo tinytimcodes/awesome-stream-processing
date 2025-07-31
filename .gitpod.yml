@@ -248,6 +248,11 @@ tasks:
           # Any additional position risk managementspecific setup
           echo "position risk management demo ready"
           ;;
+             # After everything is ready
+          echo "Setting up Superset dashboard"
+          chmod +x superset_scripts/market_enrichment_script.sh
+          ./superset_scripts/market_enrichment_script.sh
+          ;;
 
         "warehouse_inventory_mgmt")
           echo "Running warehouse management"
