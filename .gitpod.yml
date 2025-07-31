@@ -247,8 +247,6 @@ tasks:
 
           # Any additional position risk managementspecific setup
           echo "position risk management demo ready"
-          ;;
-             # After everything is ready
           echo "Setting up Superset dashboard"
           chmod +x superset_scripts/position_risk_script.sh
           ./superset_scripts/position_risk_script.sh
