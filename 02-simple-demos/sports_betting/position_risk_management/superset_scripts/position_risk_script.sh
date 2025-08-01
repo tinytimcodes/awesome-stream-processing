@@ -15,10 +15,19 @@ DATASET_NAME="Position Overview"
 get_or_create_asset() {
    local asset_type="$1"; local asset_name="$2"; local filter_q="$3"; local create_payload="$4"
    echo "--- Managing ${asset_type^}: '$asset_name' ---" >&2
-   local get_response; get_response=$(curl -s -G "$SUPERSET_URL/api/v1/$asset_type/" -H "Authorization: Bearer $TOKEN" --data-urlencode "$filter_q")
+   local get_response; get_response=$(curl -s -G "$SUPERSET_URL/api/v1/$asset_type/" \
+                                    -H "Authorization: Bearer $TOKEN" \
+                                    --data-urlencode "$filter_q")
    local existing_id; existing_id=$(echo "$get_response" | jq -r '.result[0].id // empty')
-   if [[ -n "$existing_id" ]]; then echo "$existing_id"; return; fi
-   local create_response; create_response=$(curl -s -X POST "$SUPERSET_URL/api/v1/$asset_type/" -H "Authorization: Bearer $TOKEN" -H "X-CSRFToken: $CSRF_TOKEN" -H "Content-Type: application/json" -d "$create_payload")
+   if [[ -n "$existing_id" ]]; then
+     echo "$existing_id"
+     return
+   fi
+   local create_response; create_response=$(curl -s -X POST "$SUPERSET_URL/api/v1/$asset_type/" \
+                                        -H "Authorization: Bearer $TOKEN" \
+                                        -H "X-CSRFToken: $CSRF_TOKEN" \
+                                        -H "Content-Type: application/json" \
+                                        -d "$create_payload")
    local new_id; new_id=$(echo "$create_response" | jq -r '.id // empty')
    [[ -z "$new_id" ]] && echo "Failed to create $asset_type '$asset_name': $create_response" >&2 && exit 1
    echo "$new_id"
@@ -27,7 +36,9 @@ get_or_create_asset() {
 # --- Auth ---
 until curl -s "$SUPERSET_URL/api/v1/ping" &> /dev/null; do sleep 1; done
 sleep 10
-LOGIN_RESPONSE=$(curl -s -X POST "$SUPERSET_URL/api/v1/security/login" -H 'Content-Type: application/json' -d "{\"username\": \"$SUPERSET_USERNAME\", \"password\": \"$SUPERSET_PASSWORD\", \"provider\": \"db\"}")
+LOGIN_RESPONSE=$(curl -s -X POST "$SUPERSET_URL/api/v1/security/login" \
+                     -H 'Content-Type: application/json' \
+                     -d "{\"username\": \"$SUPERSET_USERNAME\", \"password\": \"$SUPERSET_PASSWORD\", \"provider\": \"db\"}")
 TOKEN=$(echo "$LOGIN_RESPONSE" | jq -r '.access_token // empty')
 [[ -z "$TOKEN" ]] && echo "Login failed: $LOGIN_RESPONSE" >&2 && exit 1
 CSRF_TOKEN=$(curl -s -H "Authorization: Bearer $TOKEN" "$SUPERSET_URL/api/v1/security/csrf_token/" | jq -r '.result')
@@ -60,28 +71,42 @@ CREATE_DATASET_PAYLOAD=$(jq -n \
   --arg db "$DB_ID" --arg tn "$DATASET_TABLE_NAME" --arg schema "public" \
   '{database: ($db|tonumber), table_name: $tn, schema: $schema, owners: [1]}')
 DATASET_ID=$(get_or_create_asset "dataset" "$DATASET_TABLE_NAME" "$DATASET_FILTER_Q" "$CREATE_DATASET_PAYLOAD")
+
 curl -s -X PUT "$SUPERSET_URL/api/v1/dataset/$DATASET_ID/refresh" \
      -H "Authorization: Bearer $TOKEN" -H "X-CSRFToken: $CSRF_TOKEN" > /dev/null
 
-# --- Metrics ---
+# --- Metrics (PATCH-based creation) ---
 DESIRED_METRICS=$(jq -n '{
-   "avg_profit_loss": "AVG(profit_loss)",
-   "sum_profit_loss": "SUM(profit_loss)",
-   "avg_fair_value": "AVG(fair_value)"
+  "avg_profit_loss": "AVG(profit_loss)",
+  "sum_profit_loss": "SUM(profit_loss)",
+  "avg_fair_value": "AVG(fair_value)"
 }')
-EXISTING_METRICS=$(curl -s -G "$SUPERSET_URL/api/v1/dataset/$DATASET_ID" --data-urlencode 'q={"columns":["metrics"]}' -H "Authorization: Bearer $TOKEN" | jq '.result.metrics // []')
+EXISTING_METRICS=$(curl -s -G "$SUPERSET_URL/api/v1/dataset/$DATASET_ID" \
+                     --data-urlencode 'q={"columns":["metrics"]}' \
+                     -H "Authorization: Bearer $TOKEN" \
+                   | jq '.result.metrics // []')
+
 for metric_name in $(echo "$DESIRED_METRICS" | jq -r 'keys[]'); do
-   metric_exists=$(echo "$EXISTING_METRICS" | jq --arg name "$metric_name" 'any(.metric_name == $name)')
-   if [[ "$metric_exists" == "false" ]]; then
-       expression=$(jq -r --arg k "$metric_name" '.[$k]' <<<"$DESIRED_METRICS")
-       verbose_name=$(echo "$metric_name" | sed 's/_/ /g' | awk '{for(i=1;i<=NF;i++)$i=toupper(substr($i,1,1)) substr($i,2)}1')
-       new_metric=$(jq -n --arg name "$metric_name" --arg expr "$expression" --arg v "$verbose_name" '{"metric_name":$name,"expression":$expr,"verbose_name":$v}')
-       merged_metrics=$(echo "$EXISTING_METRICS" | jq --argjson m "$new_metric" '. + [$m]')
-       payload=$(echo "$merged_metrics" | jq '{metrics: map({metric_name, expression, verbose_name})}')
-       curl -s -X PUT "$SUPERSET_URL/api/v1/dataset/$DATASET_ID" \
-            -H "Authorization: Bearer $TOKEN" -H "X-CSRFToken: $CSRF_TOKEN" \
-            -H "Content-Type: application/json" -d "$payload" > /dev/null
-   fi
+  if echo "$EXISTING_METRICS" \
+       | jq -e --arg name "$metric_name" 'any(.metric_name == $name)' > /dev/null; then
+    continue
+  fi
+  expression=$(jq -r --arg k "$metric_name" '.[$k]' <<<"$DESIRED_METRICS")
+  verbose_name=$(echo "$metric_name" | sed 's/_/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) substr($i,2)}1')
+
+  metric_payload=$(jq -n \
+    --arg mn "$metric_name" \
+    --arg expr "$expression" \
+    --arg vn "$verbose_name" \
+    '{metric_name: $mn, expression: $expr, verbose_name: $vn, metric_type: "expression"}')
+
+  echo "--- Creating metric $metric_name ---" >&2
+  curl -s -X PATCH "$SUPERSET_URL/api/v1/dataset/$DATASET_ID" \
+       -H "Authorization: Bearer $TOKEN" \
+       -H "X-CSRFToken: $CSRF_TOKEN" \
+       -H "Content-Type: application/json" \
+       -d "{\"metrics\":[$metric_payload]}" \
+  | jq .
 done
 
 # --- Chart: Profit & Loss Over Time ---
@@ -128,7 +153,7 @@ CREATE_CHART_2_PAYLOAD=$(jq -n --arg name "$CHART_2_NAME" --argjson ds_id "$DATA
 }')
 CHART_2_ID=$(get_or_create_asset "chart" "$CHART_2_NAME" "$CHART_2_FILTER_Q" "$CREATE_CHART_2_PAYLOAD")
 
-# --- Chart: Market Price by Bookmaker ---
+# --- Chart: Market Prices by Bookmaker ---
 CHART_3_NAME="Market Prices by Bookmaker"
 CHART_3_FILTER_Q="q=$(jq -n --arg name "$CHART_3_NAME" '{filters:[{col:"slice_name",opr:"eq",value:$name}]}')"
 CHART_3_PARAMS=$(jq -n --argjson ds_id "$DATASET_ID" '{
@@ -149,7 +174,6 @@ CREATE_CHART_3_PAYLOAD=$(jq -n --arg name "$CHART_3_NAME" --argjson ds_id "$DATA
 }')
 CHART_3_ID=$(get_or_create_asset "chart" "$CHART_3_NAME" "$CHART_3_FILTER_Q" "$CREATE_CHART_3_PAYLOAD")
 
-# --- Output chart URLs ---
 echo "✅ Superset charts created:"
 echo " - $CHART_1_NAME: $SUPERSET_URL/explore/?slice_id=$CHART_1_ID"
 echo " - $CHART_2_NAME: $SUPERSET_URL/explore/?slice_id=$CHART_2_ID"
